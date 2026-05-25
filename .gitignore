@@ -17,3 +17,8 @@ local_eas_builds/
 *.aab
 *.keystore
 *.jks
+local.properties
+
+# Generated native projects (managed workflow — never commit)
+apps/expo/android/
+apps/expo/ios/
