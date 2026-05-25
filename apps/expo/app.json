@@ -2,6 +2,7 @@
   "expo": {
     "name": "WaypointMap",
     "slug": "waypointmap",
+    "owner": "martin.espinola",
     "scheme": "waypointmap",
     "orientation": "default",
     "web": {
@@ -34,6 +35,11 @@
           }
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "38d128b4-701f-4c14-be2e-26010c341251"
+      }
+    }
   }
 }

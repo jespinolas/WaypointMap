@@ -1,14 +1,11 @@
 {
   "cli": {
-    "version": ">= 13.0.0"
+    "version": ">= 19.0.0"
   },
   "build": {
     "production": {
       "android": {
         "buildType": "app-bundle"
-      },
-      "ios": {
-        "buildType": "archive"
       }
     },
     "production-apk": {
