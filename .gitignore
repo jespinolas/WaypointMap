@@ -22,3 +22,8 @@ local.properties
 # Generated native projects (managed workflow — never commit)
 apps/expo/android/
 apps/expo/ios/
+
+# H2 database files (contain user data)
+data/
+*.mv.db
+*.trace.db
