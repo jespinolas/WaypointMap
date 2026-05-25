@@ -31,6 +31,10 @@ public class ReverseEngineeringController {
     private final KmzBuilderService kmzBuilder;
     private final ObjectMapper jackson = new ObjectMapper();
 
+    // Cache the last generated KMZ for phone download
+    private volatile byte[] lastKmzBytes;
+    private volatile String lastKmzFilename = "mission.kmz";
+
     public ReverseEngineeringController(LawnmowerService lawnmower, KmzBuilderService kmzBuilder) {
         this.lawnmower = lawnmower;
         this.kmzBuilder = kmzBuilder;
@@ -163,6 +167,11 @@ public class ReverseEngineeringController {
         try {
             byte[] kmzBytes = kmzBuilder.build(buildReq);
             String filename = sanitizeFilename(missionName) + ".kmz";
+
+            // Cache for phone download
+            lastKmzBytes = kmzBytes;
+            lastKmzFilename = filename;
+
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION,
                             ContentDisposition.attachment().filename(filename).build().toString())
@@ -307,16 +316,84 @@ public class ReverseEngineeringController {
         }
     }
 
-    @PostMapping(value = "/api/missions/kmz/export", produces = MediaType.APPLICATION_XML_VALUE)
-    public String exportKmzPreview() {
-        return """
-                <?xml version="1.0" encoding="UTF-8"?>
-                <kml>
-                  <Document>
-                    <name>WaypointMap Public Replica</name>
-                  </Document>
-                </kml>
-                """;
+    // ─── Phone download (KMZ cache) ──────────────────────────────────────────
+
+    @GetMapping(value = "/api/kmz/latest", produces = "application/vnd.google-earth.kmz")
+    public ResponseEntity<byte[]> getLatestKmz() {
+        if (lastKmzBytes == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment().filename(lastKmzFilename).build().toString())
+                .contentType(MediaType.parseMediaType("application/vnd.google-earth.kmz"))
+                .body(lastKmzBytes);
+    }
+
+    @GetMapping(value = "/download", produces = MediaType.TEXT_HTML_VALUE)
+    public String downloadPage() {
+        String serverUrl = serverUrl();
+        String kmzUrl = serverUrl + "/api/kmz/latest";
+        String qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + java.net.URLEncoder.encode(kmzUrl, java.nio.charset.StandardCharsets.UTF_8);
+
+        if (lastKmzBytes != null) {
+            return """
+                    <!DOCTYPE html>
+                    <html><head>
+                    <meta charset="utf-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+                    <title>WaypointMap — Download KMZ</title>
+                    <style>
+                      * { margin:0; padding:0; box-sizing:border-box; }
+                      body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0f172a; color: #e2e8f0; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:32px 20px; text-align:center; }
+                      h1 { font-size: 24px; font-weight: 800; margin-bottom: 4px; }
+                      .sub { font-size: 13px; color: #94a3b8; margin-bottom: 28px; }
+                      .card { background: #1e293b; border-radius: 14px; padding: 24px; max-width: 320px; width: 100%%; }
+                      .stat { font-size: 13px; color: #22c55e; font-weight: 600; margin-bottom: 16px; }
+                      .qr-img { width: 180px; height: 180px; border-radius: 10px; margin-bottom: 16px; background: #fff; padding: 8px; }
+                      .btn { display: block; background: #3b82f6; color: #fff; padding: 14px; border-radius: 10px; font-size: 16px; font-weight: 700; text-decoration: none; margin-bottom: 14px; }
+                      .btn:active { background: #2563eb; }
+                      .url-text { font-size: 11px; color: #64748b; word-break: break-all; margin-top: 8px; }
+                      .tip { font-size: 11px; color: #475569; margin-top: 16px; line-height: 1.5; }
+                    </style>
+                    </head><body>
+                    <h1>WaypointMap</h1>
+                    <p class="sub">Mission KMZ — ready for download</p>
+                    <div class="card">
+                      <p class="stat">✔ Mission ready: %s</p>
+                      <img class="qr-img" src="%s" alt="QR Code">
+                      <a class="btn" href="%s">Download KMZ</a>
+                      <p class="url-text">%s</p>
+                    </div>
+                    <p class="tip">1. Download the KMZ on your phone<br>2. Open with DJI Fly / DJI Pilot<br>3. Your mission appears in the app</p>
+                    </body></html>
+                    """.formatted(lastKmzFilename, qrUrl, kmzUrl, kmzUrl);
+        } else {
+            return """
+                    <!DOCTYPE html>
+                    <html><head>
+                    <meta charset="utf-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+                    <title>WaypointMap — Download KMZ</title>
+                    <style>
+                      * { margin:0; padding:0; box-sizing:border-box; }
+                      body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0f172a; color: #e2e8f0; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:32px 20px; text-align:center; }
+                      h1 { font-size: 24px; font-weight: 800; margin-bottom: 4px; }
+                      .sub { font-size: 13px; color: #94a3b8; margin-bottom: 28px; }
+                      .card { background: #1e293b; border-radius: 14px; padding: 24px; max-width: 320px; width: 100%%; }
+                      .stat { font-size: 13px; color: #f59e0b; font-weight: 600; margin-bottom: 16px; }
+                      .tip { font-size: 12px; color: #64748b; line-height: 1.6; }
+                    </style>
+                    </head><body>
+                    <h1>WaypointMap</h1>
+                    <p class="sub">Phone download portal</p>
+                    <div class="card">
+                      <p class="stat">No mission generated yet</p>
+                      <p class="tip">Open the WaypointMap web app on your laptop,<br>plan a mission, download the KMZ,<br>then refresh this page on your phone.</p>
+                    </div>
+                    </body></html>
+                    """;
+        }
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -410,5 +487,19 @@ public class ReverseEngineeringController {
 
     private static String sanitizeFilename(String name) {
         return name.replaceAll("[^a-zA-Z0-9_\\-]", "_");
+    }
+
+    /** Guess the server's external URL from the request. */
+    private String serverUrl() {
+        try {
+            var req = ((org.springframework.web.context.request.ServletRequestAttributes)
+                    org.springframework.web.context.request.RequestContextHolder.currentRequestAttributes())
+                    .getRequest();
+            String host = req.getHeader("Host");
+            String scheme = req.getHeader("X-Forwarded-Proto");
+            if (scheme == null) scheme = req.getScheme();
+            if (host != null && scheme != null) return scheme + "://" + host;
+        } catch (Exception ignored) {}
+        return "http://localhost:8088";
     }
 }
