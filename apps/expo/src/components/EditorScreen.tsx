@@ -162,6 +162,12 @@ export function EditorScreen() {
   const [djiSettings, setDjiSettings] = useState<DjiUploadSettings>(loadDjiSettings);
   const [djiUploadStatus, setDjiUploadStatus] = useState<string | null>(null);
 
+  // Phone download state
+  const [hasDownloaded, setHasDownloaded] = useState(false);
+  const phoneKmzUrl = API_BASE_URL.replace(/localhost|127\.0\.0\.1/, "YOUR_LAPTOP_IP") + "/api/kmz/latest";
+  const phonePageUrl = API_BASE_URL.replace(/localhost|127\.0\.0\.1/, "YOUR_LAPTOP_IP") + "/download";
+  const qrImageUrl = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(phonePageUrl);
+
   // Feature 4: cursor coordinates state
   const [cursorLL, setCursorLL] = useState<{ lat: number; lng: number } | null>(null);
 
@@ -424,6 +430,8 @@ export function EditorScreen() {
         setDjiUploadStatus(dst ? `Saved: ${dst}` : "Upload failed — check folder");
         setTimeout(() => setDjiUploadStatus(null), 6000);
       }
+
+      setHasDownloaded(true);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Download failed");
     }
@@ -479,6 +487,8 @@ export function EditorScreen() {
         setDjiUploadStatus(dst ? `Saved: ${dst}` : "Upload failed — check folder");
         setTimeout(() => setDjiUploadStatus(null), 6000);
       }
+
+      setHasDownloaded(true);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Download failed");
     }
@@ -1693,6 +1703,44 @@ export function EditorScreen() {
                     ⚠️ {mapState.waypointCount} waypoints exceeds the DJI 99-point limit. DJI Pilot may reject this mission.
                   </Text>
                 )}
+
+                {/* Phone download — QR code + URL */}
+                {hasDownloaded && canDownload && (
+                  <View style={phoneStyles.card}>
+                    <Text style={phoneStyles.title}>Send to your phone</Text>
+                    <Text style={phoneStyles.subtitle}>Scan QR or open the URL below</Text>
+                    {Platform.OS === "web" ? (
+                      <img
+                        src={qrImageUrl}
+                        alt="QR Code"
+                        style={{ width: 160, height: 160, borderRadius: 10, background: "#fff", padding: 8, alignSelf: "center" }}
+                      />
+                    ) : (
+                      <View style={{ width: 160, height: 160, borderRadius: 10, backgroundColor: "#fff", alignSelf: "center", alignItems: "center", justifyContent: "center" }}>
+                        <Text style={{ fontSize: 11, color: "#6c757d" }}>QR unavailable</Text>
+                      </View>
+                    )}
+                    <View style={phoneStyles.urlRow}>
+                      <Text style={phoneStyles.url} numberOfLines={2}>{phonePageUrl}</Text>
+                    </View>
+                    <View style={phoneStyles.btnRow}>
+                      <Pressable
+                        style={phoneStyles.copyBtn}
+                        onPress={() => {
+                          if (typeof navigator !== "undefined") {
+                            navigator.clipboard.writeText(phonePageUrl).catch(() => {});
+                          }
+                        }}
+                      >
+                        <Text style={phoneStyles.copyBtnText}>Copy URL</Text>
+                      </Pressable>
+                    </View>
+                    <Text style={phoneStyles.hint}>
+                      Replace YOUR_LAPTOP_IP with your computer's IP address on the same WiFi.{Platform.OS === "web" ? "\nFind it: open Terminal, type: ifconfig en0 | grep inet" : ""}
+                    </Text>
+                  </View>
+                )}
+
                 <Text style={styles.helpText}>
                   {canDownload
                     ? "Click Download KMZ to save your mission."
@@ -2659,4 +2707,16 @@ const weatherStyles = StyleSheet.create({
   refreshBtn: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 4, borderWidth: 1, borderColor: "#0d6efd" },
   refreshText: { fontSize: 11, color: "#0d6efd", fontWeight: "600" },
   timestamp: { fontSize: 10, color: "#adb5bd" },
+});
+
+const phoneStyles = StyleSheet.create({
+  card: { backgroundColor: "#1e293b", borderRadius: 12, padding: 16, gap: 10, marginTop: 4 },
+  title: { fontSize: 15, fontWeight: "700", color: "#f1f5f9", textAlign: "center" },
+  subtitle: { fontSize: 12, color: "#94a3b8", textAlign: "center", marginBottom: 4 },
+  urlRow: { backgroundColor: "#0f172a", borderRadius: 8, padding: 10 },
+  url: { fontSize: 11, color: "#64748b", textAlign: "center", fontFamily: "Courier" },
+  btnRow: { flexDirection: "row", gap: 8, justifyContent: "center" },
+  copyBtn: { backgroundColor: "#3b82f6", borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
+  copyBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  hint: { fontSize: 11, color: "#475569", textAlign: "center", lineHeight: 16 },
 });

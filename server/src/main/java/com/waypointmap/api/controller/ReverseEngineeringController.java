@@ -334,7 +334,7 @@ public class ReverseEngineeringController {
     public String downloadPage() {
         String serverUrl = serverUrl();
         String kmzUrl = serverUrl + "/api/kmz/latest";
-        String qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + java.net.URLEncoder.encode(kmzUrl, java.nio.charset.StandardCharsets.UTF_8);
+        String qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" + java.net.URLEncoder.encode(kmzUrl, java.nio.charset.StandardCharsets.UTF_8);
 
         if (lastKmzBytes != null) {
             return """
@@ -342,32 +342,46 @@ public class ReverseEngineeringController {
                     <html><head>
                     <meta charset="utf-8">
                     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-                    <title>WaypointMap — Download KMZ</title>
+                    <title>WaypointMap — Downloading…</title>
                     <style>
                       * { margin:0; padding:0; box-sizing:border-box; }
                       body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0f172a; color: #e2e8f0; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:32px 20px; text-align:center; }
-                      h1 { font-size: 24px; font-weight: 800; margin-bottom: 4px; }
-                      .sub { font-size: 13px; color: #94a3b8; margin-bottom: 28px; }
-                      .card { background: #1e293b; border-radius: 14px; padding: 24px; max-width: 320px; width: 100%%; }
-                      .stat { font-size: 13px; color: #22c55e; font-weight: 600; margin-bottom: 16px; }
-                      .qr-img { width: 180px; height: 180px; border-radius: 10px; margin-bottom: 16px; background: #fff; padding: 8px; }
-                      .btn { display: block; background: #3b82f6; color: #fff; padding: 14px; border-radius: 10px; font-size: 16px; font-weight: 700; text-decoration: none; margin-bottom: 14px; }
+                      h1 { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+                      .sub { font-size: 13px; color: #94a3b8; margin-bottom: 24px; }
+                      .card { background: #1e293b; border-radius: 14px; padding: 28px 24px; max-width: 340px; width: 100%%; margin-bottom: 16px; }
+                      .spinner { width: 40px; height: 40px; border: 3px solid #334155; border-top: 3px solid #3b82f6; border-radius: 50%%; animation: spin 0.8s linear infinite; margin: 0 auto 16px auto; }
+                      @keyframes spin { to { transform: rotate(360deg); } }
+                      .status { font-size: 14px; font-weight: 600; color: #22c55e; margin-bottom: 8px; }
+                      .status-sub { font-size: 12px; color: #64748b; margin-bottom: 20px; }
+                      .qr-img { width: 200px; height: 200px; border-radius: 12px; margin-bottom: 8px; background: #fff; padding: 10px; }
+                      .hint { font-size: 10px; color: #475569; margin-bottom: 20px; }
+                      .btn { display: block; background: #3b82f6; color: #fff; padding: 14px; border-radius: 10px; font-size: 16px; font-weight: 700; text-decoration: none; margin-bottom: 10px; }
                       .btn:active { background: #2563eb; }
-                      .url-text { font-size: 11px; color: #64748b; word-break: break-all; margin-top: 8px; }
+                      .copy-btn { display: block; background: transparent; color: #64748b; border: 1px solid #334155; padding: 10px; border-radius: 10px; font-size: 13px; cursor: pointer; width: 100%%; }
+                      .copy-btn:active { background: #1e293b; }
                       .tip { font-size: 11px; color: #475569; margin-top: 16px; line-height: 1.5; }
                     </style>
                     </head><body>
                     <h1>WaypointMap</h1>
-                    <p class="sub">Mission KMZ — ready for download</p>
+                    <p class="sub">Mission KMZ</p>
                     <div class="card">
-                      <p class="stat">✔ Mission ready: %s</p>
-                      <img class="qr-img" src="%s" alt="QR Code">
+                      <div class="spinner"></div>
+                      <p class="status">Downloading %s…</p>
+                      <p class="status-sub">Open with DJI Fly when done</p>
+                      <img class="qr-img" src="%s" alt="Scan to download">
+                      <p class="hint">Scan QR to download if it doesn't start automatically</p>
                       <a class="btn" href="%s">Download KMZ</a>
-                      <p class="url-text">%s</p>
+                      <button class="copy-btn" onclick="navigator.clipboard.writeText('%s').then(()=>this.textContent='Copied!')">Copy URL</button>
                     </div>
-                    <p class="tip">1. Download the KMZ on your phone<br>2. Open with DJI Fly / DJI Pilot<br>3. Your mission appears in the app</p>
+                    <p class="tip">After download, open the file<br>with DJI Fly / DJI Pilot</p>
+                    <script>
+                      // Auto-trigger download
+                      setTimeout(function() {
+                        window.location.href = '%s';
+                      }, 800);
+                    </script>
                     </body></html>
-                    """.formatted(lastKmzFilename, qrUrl, kmzUrl, kmzUrl);
+                    """.formatted(lastKmzFilename, qrUrl, kmzUrl, kmzUrl, kmzUrl);
         } else {
             return """
                     <!DOCTYPE html>
