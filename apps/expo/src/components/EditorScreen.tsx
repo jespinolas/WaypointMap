@@ -22,19 +22,17 @@ import {
 import {
   type WindReport,
   type WindLevel,
-  type WindLevel2,
   type CrosswindResult,
   WIND_ALTITUDE_LABELS,
   analyzeMissionWind,
-  computeCrosswind,
   fetchWindReport,
-  windBarbPath,
   windBgColor,
   windColor,
   windDirLabel,
   windLabel,
   windWarning
 } from "../services/weather";
+import { type AuthState, apiCall, clearAuth, loadAuth, saveAuth } from "../services/auth";
 import type {
   DrawMode,
   MapEditorHandle,
@@ -56,7 +54,7 @@ const API_BASE_URL =
   "http://localhost:8088";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type WorkflowTab = "simple" | "advanced" | "download";
+type WorkflowTab = "simple" | "advanced" | "download" | "saved";
 type FinalAction = 0 | 1; // 0=hover, 1=return to home
 
 const ACTIONS: Array<{ key: string; label: string }> = [
@@ -167,6 +165,125 @@ export function EditorScreen() {
   const phoneKmzUrl = API_BASE_URL.replace(/localhost|127\.0\.0\.1/, "YOUR_LAPTOP_IP") + "/api/kmz/latest";
   const phonePageUrl = API_BASE_URL.replace(/localhost|127\.0\.0\.1/, "YOUR_LAPTOP_IP") + "/download";
   const qrImageUrl = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(phonePageUrl);
+
+  // Auth state
+  const [auth, setAuth] = useState<AuthState | null>(loadAuth);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [savedMissions, setSavedMissions] = useState<Array<{ id: number; name: string; finalAction: string; waypointCount: number; updatedAt: string }>>([]);
+  const [savedMissionsLoading, setSavedMissionsLoading] = useState(false);
+
+  // ── Auth actions ──
+  const handleAuth = useCallback(async () => {
+    setAuthError(null);
+    try {
+      const data = await apiCall(API_BASE_URL, `/auth/${authMode}`, "POST", {
+        email: authEmail,
+        password: authPassword,
+      });
+      const newAuth: AuthState = { token: data.token, email: data.email, userId: data.userId };
+      setAuth(newAuth);
+      saveAuth(newAuth);
+      setAuthEmail("");
+      setAuthPassword("");
+    } catch (err: any) {
+      setAuthError(err.message);
+    }
+  }, [authMode, authEmail, authPassword]);
+
+  const handleLogout = useCallback(() => {
+    setAuth(null);
+    clearAuth();
+    setSavedMissions([]);
+  }, []);
+
+  const loadSavedMissions = useCallback(async () => {
+    if (!auth) return;
+    setSavedMissionsLoading(true);
+    try {
+      const data = await apiCall(API_BASE_URL, "/api/missions", "GET", undefined, auth.token);
+      setSavedMissions(data);
+    } catch { /* ignore */ }
+    setSavedMissionsLoading(false);
+  }, [auth]);
+
+  const handleSaveMission = useCallback(async () => {
+    if (!auth) return;
+    const waypoints = mapRef.current?.getWaypoints() ?? [];
+    if (!waypoints.length) return;
+    try {
+      const payload = waypoints.map((w) => ({
+        id: w.id,
+        Latitude: w.lat,
+        Longitude: w.lng,
+        altitude: w.altitude,
+        speed: w.speed,
+        gimbalAngle: w.angle,
+        heading: w.heading,
+        action: w.action,
+        turnMode: w.turnMode,
+        useStraightLine: w.useStraightLine,
+        waypointTurnDampingDist: w.waypointTurnDampingDist,
+      }));
+      await apiCall(API_BASE_URL, "/api/missions", "POST", {
+        name: missionName,
+        finalAction: finalAction === 0 ? "hover" : "goHome",
+        waypoints: payload,
+      }, auth.token);
+      loadSavedMissions();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  }, [auth, missionName, finalAction, loadSavedMissions]);
+
+  const handleLoadMission = useCallback(async (id: number) => {
+    if (!auth) return;
+    try {
+      const data = await apiCall(API_BASE_URL, `/api/missions/${id}`, "GET", undefined, auth.token);
+      let wps;
+      if (typeof data.waypoints === "string") {
+        wps = JSON.parse(data.waypoints);
+      } else {
+        wps = data.waypoints;
+      }
+      const converted = wps.map((w: any) => ({
+        id: w.id ?? 0,
+        lat: w.Latitude ?? w.latitude ?? 0,
+        lng: w.Longitude ?? w.longitude ?? 0,
+        altitude: w.altitude ?? 60,
+        speed: w.speed ?? 3.5,
+        angle: w.gimbalAngle ?? w.angle ?? -45,
+        heading: w.heading ?? 0,
+        action: w.action ?? "noAction",
+        turnMode: w.turnMode ?? "coordinateTurn",
+        useStraightLine: w.useStraightLine ?? 0,
+        waypointTurnDampingDist: w.waypointTurnDampingDist ?? 20,
+      }));
+      mapRef.current?.importWaypoints(converted);
+      if (data.name) setMissionName(data.name);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  }, [auth]);
+
+  const handleDeleteMission = useCallback(async (id: number) => {
+    if (!auth) return;
+    try {
+      await apiCall(API_BASE_URL, `/api/missions/${id}`, "DELETE", undefined, auth.token);
+      setSavedMissions((prev) => prev.filter((m) => m.id !== id));
+    } catch (err: any) {
+      alert(err.message);
+    }
+  }, [auth]);
+
+  // Load saved missions when auth changes or tab switches to saved
+  useEffect(() => {
+    if (auth && workflowTab === "saved") {
+      loadSavedMissions();
+    }
+  }, [auth, workflowTab, loadSavedMissions]);
 
   // Feature 4: cursor coordinates state
   const [cursorLL, setCursorLL] = useState<{ lat: number; lng: number } | null>(null);
@@ -1062,7 +1179,7 @@ export function EditorScreen() {
 
           {/* Tabs */}
           <View style={styles.tabsRow}>
-            {(["simple", "advanced", "download"] as WorkflowTab[]).map(
+            {(["simple", "advanced", "download", "saved"] as WorkflowTab[]).map(
               (tab) => (
                 <Pressable
                   key={tab}
@@ -1083,7 +1200,9 @@ export function EditorScreen() {
                       ? "Simple"
                       : tab === "advanced"
                       ? "Advanced"
-                      : "Download"}
+                      : tab === "download"
+                      ? "Download"
+                      : "Saved"}
                   </Text>
                 </Pressable>
               )
@@ -1748,6 +1867,109 @@ export function EditorScreen() {
                 </Text>
               </View>
             )}
+
+            {/* ── SAVED MISSIONS TAB ── */}
+            {workflowTab === "saved" && (
+              <View style={styles.panelBody}>
+                {!auth ? (
+                  /* ── Login / Register ── */
+                  <>
+                    <Text style={styles.sectionLabel}>{authMode === "login" ? "Log in" : "Create account"}</Text>
+                    <TextInput
+                      value={authEmail}
+                      onChangeText={setAuthEmail}
+                      placeholder="Email"
+                      placeholderTextColor="#adb5bd"
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                      style={styles.missionNameInput}
+                    />
+                    <TextInput
+                      value={authPassword}
+                      onChangeText={setAuthPassword}
+                      placeholder="Password"
+                      placeholderTextColor="#adb5bd"
+                      secureTextEntry
+                      style={styles.missionNameInput}
+                    />
+                    {authError && (
+                      <Text style={styles.errorText}>{authError}</Text>
+                    )}
+                    <Pressable
+                      onPress={handleAuth}
+                      style={[styles.genBtn, { backgroundColor: "#0d6efd" }]}
+                    >
+                      <Text style={styles.genBtnText}>
+                        {authMode === "login" ? "Log in" : "Register"}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthError(null); }}
+                    >
+                      <Text style={[styles.helpText, { textAlign: "center", color: "#0d6efd" }]}>
+                        {authMode === "login" ? "Create an account" : "Already have an account? Log in"}
+                      </Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  /* ── Saved missions ── */
+                  <>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                      <Text style={styles.sectionLabel}>My Missions</Text>
+                      <Pressable onPress={handleLogout} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Text style={{ fontSize: 12, color: "#dc3545" }}>Log out</Text>
+                      </Pressable>
+                    </View>
+                    <Text style={[styles.helpText, { fontSize: 12 }]}>Logged in as {auth.email}</Text>
+
+                    {mapState.hasWaypoints && (
+                      <Pressable
+                        onPress={handleSaveMission}
+                        style={styles.genBtn}
+                      >
+                        <Text style={styles.genBtnText}>Save Current Mission</Text>
+                      </Pressable>
+                    )}
+
+                    {savedMissionsLoading && (
+                      <Text style={styles.helpText}>Loading…</Text>
+                    )}
+
+                    {savedMissions.length === 0 && !savedMissionsLoading && (
+                      <Text style={styles.helpText}>
+                        No saved missions yet. Generate waypoints, then click "Save Current Mission".
+                      </Text>
+                    )}
+
+                    {savedMissions.map((m) => (
+                      <View key={m.id} style={savedStyles.row}>
+                        <View style={savedStyles.info}>
+                          <Text style={savedStyles.name}>{m.name}</Text>
+                          <Text style={savedStyles.meta}>{m.waypointCount} WP · {new Date(m.updatedAt).toLocaleDateString()}</Text>
+                        </View>
+                        <View style={savedStyles.actions}>
+                          <Pressable
+                            style={savedStyles.loadBtn}
+                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                            onPress={() => handleLoadMission(m.id)}
+                          >
+                            <Text style={savedStyles.loadBtnText}>Load</Text>
+                          </Pressable>
+                          <Pressable
+                            style={savedStyles.delBtn}
+                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                            onPress={() => handleDeleteMission(m.id)}
+                          >
+                            <Text style={savedStyles.delBtnText}>✕</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    ))}
+                  </>
+                )}
+              </View>
+            )}
+
           </ScrollView>
         </View>
       </View>
@@ -2719,4 +2941,16 @@ const phoneStyles = StyleSheet.create({
   copyBtn: { backgroundColor: "#3b82f6", borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
   copyBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
   hint: { fontSize: 11, color: "#475569", textAlign: "center", lineHeight: 16 },
+});
+
+const savedStyles = StyleSheet.create({
+  row: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#f1f5f9" },
+  info: { flex: 1 },
+  name: { fontSize: 13, fontWeight: "600", color: "#212529" },
+  meta: { fontSize: 11, color: "#6c757d", marginTop: 2 },
+  actions: { flexDirection: "row", gap: 6 },
+  loadBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: "#0d6efd" },
+  loadBtnText: { color: "#fff", fontSize: 12, fontWeight: "700" },
+  delBtn: { padding: 6, borderRadius: 6, borderWidth: 1, borderColor: "#dee2e6" },
+  delBtnText: { fontSize: 11, color: "#dc3545" },
 });
