@@ -8,4 +8,12 @@ out
 target
 .idea
 *.iml
-
+# Secrets — never commit
+*.env
+!.env.example
+# Build artifacts
+local_eas_builds/
+*.apk
+*.aab
+*.keystore
+*.jks
