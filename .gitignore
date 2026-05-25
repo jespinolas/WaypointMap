@@ -1,0 +1,11 @@
+.DS_Store
+node_modules
+.expo
+dist
+build
+out
+.gradle
+target
+.idea
+*.iml
+

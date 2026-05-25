@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "WaypointMap",
+    "slug": "waypointmap",
+    "scheme": "waypointmap",
+    "orientation": "default",
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
