@@ -27,6 +27,7 @@
       }
     },
     "plugins": [
+      "./plugins/withBuildFixes",
       [
         "expo-build-properties",
         {
